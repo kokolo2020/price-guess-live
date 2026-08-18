@@ -163,6 +163,87 @@
     max-width:90%;
   }
 
+  .upnext-strip{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    max-width:520px;
+    width:100%;
+    overflow-x:auto;
+    padding:4px 2px 16px;
+    scrollbar-width:none;
+  }
+  .upnext-strip::-webkit-scrollbar{ display:none; }
+  .upnext-strip:empty{ display:none; }
+  .upnext-label{
+    font-family:'Space Grotesk', sans-serif;
+    font-weight:700;
+    font-size:10px;
+    color:var(--muted);
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    flex-shrink:0;
+    white-space:nowrap;
+  }
+  .upnext-item{
+    flex-shrink:0;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:3px;
+  }
+  .upnext-thumb{
+    width:44px;
+    height:44px;
+    border-radius:10px;
+    background:rgba(255,255,255,0.06);
+    border:1px solid rgba(255,255,255,0.14);
+    overflow:hidden;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    position:relative;
+  }
+  .upnext-thumb img{
+    width:100%; height:100%; object-fit:cover;
+  }
+  .upnext-item.first .upnext-thumb{
+    border-color:var(--yellow);
+    box-shadow:0 0 10px rgba(255,210,63,0.35);
+  }
+  .upnext-item.won-thumb{
+    cursor:pointer;
+  }
+  .upnext-item.won-thumb .upnext-thumb{
+    border-color:rgba(92,255,160,0.4);
+    opacity:0.8;
+  }
+  .upnext-item.won-thumb:hover .upnext-thumb{
+    opacity:1;
+  }
+  .upnext-won-badge{
+    position:absolute;
+    inset:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:rgba(18,16,27,0.65);
+    color:#5CFFA0;
+    font-family:'Space Grotesk', sans-serif;
+    font-weight:700;
+    font-size:8px;
+    letter-spacing:0.05em;
+  }
+  .upnext-name{
+    font-size:8px;
+    color:var(--muted);
+    max-width:48px;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    text-align:center;
+  }
+
   .stage-row{
     display:flex;
     flex-direction:column;
@@ -433,6 +514,11 @@
     padding:0;
   }
   .mini-btn:hover{ background:rgba(255,255,255,0.16); }
+  .mini-btn.win{
+    background:rgba(255,210,63,0.18);
+    border-color:rgba(255,210,63,0.5);
+  }
+  .mini-btn.win:hover{ background:rgba(255,210,63,0.3); }
   .timer-bar-label{
     font-family:'JetBrains Mono', monospace;
     font-weight:700;
@@ -610,6 +696,11 @@
   .queue-item .qi-name{ flex:1; }
   .queue-item .qi-price{ color:var(--muted); font-family:'JetBrains Mono', monospace; font-size:12px; }
   .queue-item.active{ border:1px solid var(--yellow); }
+  .queue-item.won{
+    opacity:0.75;
+    border:1px solid rgba(92,255,160,0.3);
+  }
+  .queue-item.won .qi-price{ color:#5CFFA0; }
   .queue-item button{
     padding:4px 8px; font-size:11px; background:rgba(255,255,255,0.06); color:var(--muted);
   }
@@ -700,7 +791,9 @@
   <div class="viewer-count" id="viewerCount"></div>
   <div class="announce-overlay" id="announceOverlay">Get the right price and WIN</div>
   <div class="cta-banner">🎯 Guess the right PRICE and WIN!</div>
-  <div class="trial-banner">🧪 TEST TRIAL — the real game with bigger prizes drops in a few days. Subscribe so you don't miss it! 🔔</div>
+
+  <div class="upnext-strip" id="upnextStrip"></div>
+
   <div class="stage-row">
     <div class="pedestal-flank-row">
       <div class="price-flash-col" id="flashColLeft">
@@ -724,7 +817,8 @@
       </div>
       <div class="timer-bar-controls">
         <button class="mini-btn" id="miniPauseBtn" title="Pause">⏸</button>
-        <button class="mini-btn" id="miniStopBtn" title="Stop / rotate">⏹</button>
+        <button class="mini-btn win" id="miniWinBtn" title="Declare winner & reveal">🏆</button>
+        <button class="mini-btn" id="miniStopBtn" title="Skip current item — no winner">⏭</button>
         <button class="mini-btn" id="miniAnnounceBtn" title='Announce: "Get the right price and WIN"'>📢</button>
         <button class="mini-btn" id="miniAnnounceRuleBtn" title='Announce: "One guess per person"'>📣</button>
       </div>
@@ -848,6 +942,7 @@ let queue = [
 ];
 let current = null;
 let winners = [];
+let wonItems = [];
 let roundClosed = false;
 let roundGuessers = new Set();
 let roundTimerInterval = null;
@@ -951,27 +1046,104 @@ function renderQueue(){
     hidden.className = 'check-result';
     hidden.textContent = `🔒 Queue hidden while live — ${queue.length + (current?1:0)} item(s) in play.`;
     queueList.appendChild(hidden);
-    return;
+  } else {
+    if(current){
+      queueList.appendChild(queueRow(current, true, -1));
+    }
+    queue.forEach((it,idx)=> queueList.appendChild(queueRow(it, false, idx)));
+    if(!current && queue.length===0 && wonItems.length===0){
+      queueList.innerHTML = '<div class="check-result">No items yet — add one above.</div>';
+    }
   }
 
-  if(current){
-    queueList.appendChild(queueRow(current, true, -1));
+  if(wonItems.length > 0){
+    const wonHeader = document.createElement('div');
+    wonHeader.className = 'check-result';
+    wonHeader.style.marginTop = '10px';
+    wonHeader.textContent = `✅ Won (${wonItems.length})`;
+    queueList.appendChild(wonHeader);
+    wonItems.forEach(it => queueList.appendChild(queueRow(it, false, -1, true)));
   }
-  queue.forEach((it,idx)=> queueList.appendChild(queueRow(it, false, idx)));
-  if(!current && queue.length===0){
-    queueList.innerHTML = '<div class="check-result">No items yet — add one above.</div>';
-  }
+
+  renderUpNextStrip();
 }
 
-function queueRow(item, isActive, idx){
+function renderUpNextStrip(){
+  const strip = document.getElementById('upnextStrip');
+  strip.innerHTML = '';
+  if(queue.length === 0 && wonItems.length === 0) return;
+
+  const label = document.createElement('div');
+  label.className = 'upnext-label';
+  label.textContent = 'Up next';
+  strip.appendChild(label);
+
+  queue.forEach((item, i)=>{
+    const el = document.createElement('div');
+    el.className = 'upnext-item' + (i===0 ? ' first' : '');
+    const thumb = document.createElement('div');
+    thumb.className = 'upnext-thumb';
+    if(item.photos && item.photos[0]){
+      const img = document.createElement('img');
+      img.src = item.photos[0];
+      thumb.appendChild(img);
+    }
+    const nameEl = document.createElement('div');
+    nameEl.className = 'upnext-name';
+    nameEl.textContent = item.name;
+    el.appendChild(thumb);
+    el.appendChild(nameEl);
+    strip.appendChild(el);
+  });
+
+  wonItems.forEach((item)=>{
+    const el = document.createElement('div');
+    el.className = 'upnext-item won-thumb';
+    el.title = 'Tap to show this win again on the big screen';
+    const thumb = document.createElement('div');
+    thumb.className = 'upnext-thumb';
+    if(item.photos && item.photos[0]){
+      const img = document.createElement('img');
+      img.src = item.photos[0];
+      thumb.appendChild(img);
+    }
+    const badge = document.createElement('div');
+    badge.className = 'upnext-won-badge';
+    badge.textContent = 'WON';
+    thumb.appendChild(badge);
+    const nameEl = document.createElement('div');
+    nameEl.className = 'upnext-name';
+    nameEl.textContent = item.name;
+    el.appendChild(thumb);
+    el.appendChild(nameEl);
+    el.onclick = ()=> showWonRecap(item);
+    strip.appendChild(el);
+  });
+}
+
+function showWonRecap(item){
+  clearInterval(carouselInterval);
+  pedestal.innerHTML = '';
+  renderPedestalPhotos(item.photos || []);
+  itemName.textContent = item.name;
+  document.getElementById('itemCode').textContent = item.code ? `#${item.code}` : '';
+  itemSub.textContent = `🏆 Won by ${item.winner}`;
+  stageHint.textContent = '';
+  buildHiddenCounter(item.price);
+  revealCounter();
+  winnerBanner.textContent = `🏆 ${item.winner} won the ${item.name}!`;
+  winnerBanner.classList.add('show');
+}
+
+function queueRow(item, isActive, idx, isWon){
   const row = document.createElement('div');
-  row.className = 'queue-item' + (isActive ? ' active' : '');
+  row.className = 'queue-item' + (isActive ? ' active' : '') + (isWon ? ' won' : '');
   row.innerHTML = `
     ${item.photos && item.photos[0] ? `<img src="${item.photos[0]}">` : `<div style="width:36px;height:36px;border-radius:6px;background:rgba(255,255,255,0.08);"></div>`}
-    <div class="qi-name">${item.code ? `#${item.code} — ` : ''}${item.name}${isActive ? ' (live)' : ''}</div>
+    <div class="qi-name">${item.code ? `#${item.code} — ` : ''}${item.name}${isActive ? ' (live)' : ''}${isWon ? ` — ✅ WON by ${item.winner}` : ''}</div>
     <div class="qi-price">$${item.price.toFixed(2)}</div>
   `;
-  if(!isActive){
+  if(!isActive && !isWon){
     const controls = document.createElement('div');
     controls.style.display = 'flex';
     controls.style.gap = '4px';
@@ -1127,6 +1299,9 @@ function togglePause(){
 
 document.getElementById('pauseTimerBtn').onclick = togglePause;
 document.getElementById('miniPauseBtn').onclick = togglePause;
+document.getElementById('miniWinBtn').onclick = ()=>{
+  document.getElementById('declareWinBtn').click();
+};
 document.getElementById('miniStopBtn').onclick = ()=>{
   document.getElementById('rotateBtn').click();
 };
@@ -1214,7 +1389,9 @@ function declareWin(handle){
   winnerBanner.classList.add('show');
   burstConfetti();
   winners.unshift({ item: current.name, price: current.price, winner: handle, time: new Date().toLocaleTimeString() });
+  wonItems.unshift({ name: current.name, code: current.code, price: current.price, photos: current.photos, winner: handle, time: new Date().toLocaleTimeString() });
   renderWinners();
+  renderQueue();
   document.getElementById('winnerNameInput').value = '';
   document.getElementById('checkInput').value = '';
   document.getElementById('checkResult').textContent = '';
